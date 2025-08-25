@@ -1,0 +1,42 @@
+{
+  // We'll upsert by a real External Id field on Account
+  "identify": { "matchKey": "BKAI__External_Id__c" },
+
+  "shape": {
+    // Map seed ExternalKey -> Account.BKAI__External_Id__c
+    "fieldMap": {
+      "ExternalKey": "BKAI__External_Id__c"
+    },
+    // Provide defaults if missing
+    "defaults": {
+      "Type": "Customer"
+    },
+    // Remove any seed-only debug fields, if present
+    "removeFields": ["_debug"]
+  },
+
+  "transform": {
+    "pre": [
+      // Ensure Name is populated from seed (fallback from, say, Code__c)
+      { "op": "coalesce", "out": "Name", "from": ["Name", "Code__c"], "default": "Unnamed Account" }
+    ],
+    "post": []
+  },
+
+  "references": [
+    // No parent references in this simple example; add ParentId if you have a hierarchy
+    // { "field": "ParentId", "from": "idMaps.Account['${ParentExternalId}']", "required": false }
+  ],
+
+  "validate": {
+    "requiredFields": ["Name", "BKAI__External_Id__c"],
+    "uniqueBy": ["BKAI__External_Id__c"] // client-side guard
+  },
+
+  "strategy": {
+    "operation": "upsert",
+    "externalIdField": "BKAI__External_Id__c",
+    "api": "rest",
+    "batchSize": 200
+  }
+}

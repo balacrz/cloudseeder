@@ -1,0 +1,27 @@
+﻿{
+  "dryRun": false,
+
+  "steps": [
+    {
+      "object": "Account",
+      "dataFile": "data/seed.json",
+      "dataKey": "Account",
+      "mode": "direct",
+      "dependsOn": []
+    },
+    {
+      "object": "Contact",
+      "dataFile": "data/seed.json",
+      "dataKey": "Contact",
+      "mode": "direct",
+      "dependsOn": ["Account"]
+    },
+    {
+      "object": "Opportunity",
+      "dataFile": "data/seed.json",
+      "dataKey": "Opportunity",
+      "mode": "direct",
+      "dependsOn": ["Account", "Contact"]
+    }
+  ]
+}

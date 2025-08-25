@@ -1,0 +1,48 @@
+{
+  // Upsert by Opportunity.External_Id__c
+  "identify": { "matchKey": "External_Id__c" },
+
+  "shape": {
+    "fieldMap": {
+      "ExternalKey": "External_Id__c"
+    },
+    "defaults": {
+      // If seed close date is missing, use constant
+      "StageName": "${constants.oppty.defaultStageName}",
+      "CloseDate": "${constants.oppty.defaultCloseDate}"
+    },
+    "removeFields": ["_debug"]
+  },
+
+  "transform": {
+    "pre": [
+      // Ensure Name is present
+      { "op": "coalesce", "out": "Name", "from": ["Name", "External_Id__c"], "default": "New Opportunity" }
+    ],
+    "post": [
+        { "op": "remove", "field": "AccountExternalId" },
+        { "op": "remove", "field": "External_Id__c" }
+    ]
+  },
+
+  "references": [
+    // Resolve Account for the Opportunity
+    // Seed column example: Opportunity.AccountExternalId = "acct-001"
+    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true }
+
+    // OPTIONAL: If you also want to link a primary contact via a junction or custom field,
+    // add another reference here once you have the target field (e.g., Primary_Contact__c)
+    // { "field": "Primary_Contact__c", "from": "idMaps.Contact['${PrimaryContactExternalId}']", "required": false }
+  ],
+
+  "validate": {
+    "requiredFields": ["Name", "StageName", "CloseDate", "AccountId"],
+    "uniqueBy": []
+  },
+
+  "strategy": {
+    "operation": "insert",
+    "api": "rest",
+    "batchSize": 200
+  }
+}

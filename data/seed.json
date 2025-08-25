@@ -1,0 +1,11 @@
+{
+  "Account": [
+    { "ExternalKey": "acct-001", "Name": "Acme Corp" }
+  ],
+  "Contact": [
+    { "ExternalKey": "cont-001", "FirstName": "Sam", "LastName": "Lee", "Email": "sam.lee@acme.com", "AccountExternalId": "acct-001" }
+  ],
+  "Opportunity": [
+    { "ExternalKey": "opp-001", "Name": "Acme – Starter Deal", "StageName": "Qualification", "CloseDate": "2025-10-15", "AccountExternalId": "acct-001" }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  // Upsert by Contact.BKAI__External_Id__c
+  "identify": { "matchKey": "BKAI__External_Id__c" },
+
+  "shape": {
+    "fieldMap": {
+      "ExternalKey": "BKAI__External_Id__c"
+    },
+    "defaults": {
+      "LastName": "Unknown"
+    },
+    "removeFields": ["_debug"]
+  },
+
+  "transform": {
+    "pre": [
+      // Coalesce name fields if your seed is sparse
+      { "op": "coalesce", "out": "LastName", "from": ["LastName", "Name"], "default": "Unknown" }
+    ],
+    "post": [
+        { "op": "remove", "field": "AccountExternalId" }
+    ]
+  },
+
+  "references": [
+    // Resolve parent Account using the Account external id provided in the contact seed
+    // Seed column example: Contact.AccountExternalId = "acct-001"
+    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true }
+  ],
+
+  "validate": {
+    "requiredFields": ["BKAI__External_Id__c", "LastName", "AccountId"],
+    "uniqueBy": ["BKAI__External_Id__c"]
+  },
+
+  "strategy": {
+    "operation": "upsert",
+    "externalIdField": "BKAI__External_Id__c",
+    "api": "rest",
+    "batchSize": 200
+  }
+}
