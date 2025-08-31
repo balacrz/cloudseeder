@@ -11,23 +11,23 @@ This guide shows how to model a **3‑level product hierarchy** (Category → Su
 ```json
 {
   "Product2": [
-    { "ExternalKey": "PROD-MED", "Name": "Medical Equipment", "IsActive": true },
-    { "ExternalKey": "PROD-MED-DIAG", "Name": "Diagnostic Devices", "ParentExternalId": "PROD-MED", "Level": 2, "IsActive": true },
-    { "ExternalKey": "PROD-MED-DIAG-MRI", "Name": "MRI Scanner", "ParentExternalId": "PROD-MED-DIAG", "Level": 3, "IsActive": true },
+    { "ExternalKey": "PROD-MED", "Name": "Medical Equipment", "ProductCode":"PROD-MED", "IsActive": true },
+    { "ExternalKey": "PROD-MED-DIAG", "Name": "Diagnostic Devices", "ParentExternalId": "PROD-MED", "ProductCode":"PROD-MED-DIAG", "Level": 2, "IsActive": true },
+    { "ExternalKey": "PROD-MED-DIAG-MRI", "Name": "MRI Scanner", "ParentExternalId": "PROD-MED-DIAG", "ProductCode":"PROD-MED-DIAG-MRI", "Level": 3, "IsActive": true },
 
-    { "ExternalKey": "PROD-MED-THER", "Name": "Therapeutic Devices", "ParentExternalId": "PROD-MED", "Level": 2, "IsActive": true },
-    { "ExternalKey": "PROD-MED-THER-PUMP", "Name": "Infusion Pump", "ParentExternalId": "PROD-MED-THER", "Level": 3, "IsActive": true }
+    { "ExternalKey": "PROD-MED-THER", "Name": "Therapeutic Devices", "ParentExternalId": "PROD-MED", "ProductCode":"PROD-MED-THER", "Level": 2, "IsActive": true },
+    { "ExternalKey": "PROD-MED-THER-PUMP", "Name": "Infusion Pump", "ParentExternalId": "PROD-MED-THER", "ProductCode":"PROD-MED-THER-PUMP", "Level": 3, "IsActive": true }
   ],
 
   "Pricebook2": [
-    { "ExternalKey": "PB-STANDARD", "Name": "Standard Price Book", "IsActive": true, "IsStandard": true },
-    { "ExternalKey": "PB-LIST",     "Name": "List Price Book",     "IsActive": true, "IsStandard": false }
+    { "Description": "PB-STANDARD", "Name": "Standard Price Book", "IsActive": true},
+    { "Description": "PB-LIST",     "Name": "List Price Book",     "IsActive": true}
   ],
 
   "PricebookEntry": [
-    { "ExternalKey": "PBE-MRI-STD",  "ProductExternalId": "PROD-MED-DIAG-MRI",   "PricebookExternalId": "PB-STANDARD", "UnitPrice": 950000, "IsActive": true },
-    { "ExternalKey": "PBE-MRI-LIST", "ProductExternalId": "PROD-MED-DIAG-MRI",   "PricebookExternalId": "PB-LIST",     "UnitPrice": 980000, "IsActive": true },
-    { "ExternalKey": "PBE-PUMP-STD", "ProductExternalId": "PROD-MED-THER-PUMP",  "PricebookExternalId": "PB-STANDARD", "UnitPrice": 7200,   "IsActive": true }
+    { "ExternalKey": "PBE-MRI-STD",  "ProductExternalId": "PROD-MED-DIAG-MRI",   "PricebookExternalId": "PB-STANDARD", "UnitPrice": 950000, "IsActive": true},
+    { "ExternalKey": "PBE-MRI-LIST", "ProductExternalId": "PROD-MED-DIAG-MRI",   "PricebookExternalId": "PB-STANDARD",     "UnitPrice": 980000, "IsActive": true},
+    { "ExternalKey": "PBE-PUMP-STD", "ProductExternalId": "PROD-MED-THER-PUMP",  "PricebookExternalId": "PB-STANDARD", "UnitPrice": 7200,   "IsActive": true}
   ]
 }
 ```
@@ -43,6 +43,7 @@ This guide shows how to model a **3‑level product hierarchy** (Category → Su
 ## 3) Pipeline (`pipeline_products_hierarchy.json`)
 ```json
 {
+  "dryRun": false,
   "steps": [
     {
       "object": "Product2",
@@ -57,7 +58,7 @@ This guide shows how to model a **3‑level product hierarchy** (Category → Su
       "dataKey": "Product2",
       "mode": "direct",
       "dependsOn": ["Product2"],
-      "filter": { "expr": "seed.Level === 2" }
+      "filter": { "equals": { "field": "Level", "value": 2 } }
     },
     {
       "object": "Product2",
@@ -65,7 +66,7 @@ This guide shows how to model a **3‑level product hierarchy** (Category → Su
       "dataKey": "Product2",
       "mode": "direct",
       "dependsOn": ["Product2"],
-      "filter": { "expr": "seed.Level === 3" }
+      "filter": { "equals": { "field": "Level", "value": 3 } }
     },
 
     { "object": "Pricebook2",    "dataFile": "./data/products_hierarchy.json", "dataKey": "Pricebook2",    "mode": "direct" },
@@ -88,10 +89,10 @@ All mappings use the declarative pattern: **shape → transform → references �
 ### 4.1 Product2.json
 ```json
 {
-  "identify": { "matchKey": "BKAI__External_Id__c" },
+  "identify": { "matchKey": "ExternalId" },
 
   "shape": {
-    "fieldMap": { "ExternalKey": "BKAI__External_Id__c" },
+    "fieldMap": { "ExternalKey": "ExternalId" },
     "defaults": { "IsActive": true }
   },
 
@@ -106,17 +107,17 @@ All mappings use the declarative pattern: **shape → transform → references �
   },
 
   "references": [
-    { "field": "Parent_Product__c", "from": "idMaps.Product2 && idMaps.Product2['${ParentExternalId}']", "required": false }
+    { "field": "BKAI__Parent_Product__c", "from": "idMaps.Product2['${ParentExternalId}']", "required": false }
   ],
 
   "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Name"],
-    "uniqueBy": ["BKAI__External_Id__c"]
+    "requiredFields": ["ExternalId", "Name"],
+    "uniqueBy": ["ExternalId"]
   },
 
   "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
+    "operation": "insert",
+    "externalIdField": "ExternalId",
     "api": "rest",
     "batchSize": 200
   }
@@ -126,24 +127,23 @@ All mappings use the declarative pattern: **shape → transform → references �
 ### 4.2 Pricebook2.json
 ```json
 {
-  "identify": { "matchKey": "BKAI__External_Id__c" },
-  "shape":    { "fieldMap": { "ExternalKey": "BKAI__External_Id__c" } },
+  "identify": { "matchKey": "Description" },
+  "shape":    {},
 
   "transform": {
     "pre": [
-      { "op": "coalesce", "out": "IsActive",   "from": ["IsActive"],   "default": true },
-      { "op": "coalesce", "out": "IsStandard", "from": ["IsStandard"], "default": false }
+      { "op": "coalesce", "out": "IsActive",   "from": ["IsActive"],   "default": true }
     ]
   },
 
   "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Name", "IsActive"],
-    "uniqueBy": ["BKAI__External_Id__c"]
+    "requiredFields": ["Description", "Name", "IsActive"],
+    "uniqueBy": ["Description"]
   },
 
   "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
+    "operation": "insert",
+    "DescriptionField": "Description",
     "api": "rest"
   }
 }
@@ -152,9 +152,13 @@ All mappings use the declarative pattern: **shape → transform → references �
 ### 4.3 PricebookEntry.json
 ```json
 {
-  "identify": { "matchKey": "BKAI__External_Id__c" },
+  "identify": { "matchKey": "ExternalKey" },
 
-  "shape": { "fieldMap": { "ExternalKey": "BKAI__External_Id__c" } },
+  "shape": { "fieldMap": { },
+    "defaults": {
+        "Pricebook2Id": "${constants.pricebook.standardPricebook}"
+        }
+    },
 
   "references": [
     { "field": "Product2Id",  "from": "idMaps.Product2['${ProductExternalId}']",   "required": true },
@@ -163,22 +167,21 @@ All mappings use the declarative pattern: **shape → transform → references �
 
   "transform": {
     "pre": [
-      { "op": "coalesce", "out": "UseStandardPrice", "from": ["UseStandardPrice"], "default": false }
     ],
     "post": [
       { "op": "remove", "field": "ProductExternalId" },
-      { "op": "remove", "field": "PricebookExternalId" }
+      { "op": "remove", "field": "PricebookExternalId" },
+      { "op": "remove", "field": "ExternalKey" }
     ]
   },
 
   "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Product2Id", "Pricebook2Id", "UnitPrice"],
-    "uniqueBy": ["BKAI__External_Id__c"]
+    "requiredFields": ["Product2Id", "Pricebook2Id", "UnitPrice"],
+    "uniqueBy": []
   },
 
   "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
+    "operation": "insert",
     "api": "rest"
   }
 }
