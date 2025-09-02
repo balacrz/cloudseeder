@@ -26,13 +26,12 @@
   },
 
   "references": [
-    // Resolve Account for the Opportunity
-    // Seed column example: Opportunity.AccountExternalId = "acct-001"
-    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true }
-
-    // OPTIONAL: If you also want to link a primary contact via a junction or custom field,
-    // add another reference here once you have the target field (e.g., Primary_Contact__c)
-    // { "field": "Primary_Contact__c", "from": "idMaps.Contact['${PrimaryContactExternalId}']", "required": false }
+    {
+      "field": "AccountId",
+      "refObject": "Account",
+      "refKey": "${AccountExternalId}",
+      "required": true
+    }
   ],
 
   "validate": {
