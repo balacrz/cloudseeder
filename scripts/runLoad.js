@@ -2,85 +2,30 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import JSON5 from "json5";
 
 import { getConnection } from "../lib/auth.js";
 import { insertAndMap } from "../lib/loader.js";
 
-// ✅ use your new filter module
+// filters & generators
 import { applyFilter } from "../lib/filters.js";
-
-// Generators (still supported)
 import { generators as legacyGenerators } from "../services/generators.js";
 
-// --- Resolve __dirname in ESM ---
+// centralized config loaders
+import { loadStepConfig, loadPipeline, loadConstants } from "../lib/config/index.js";
+// reuse the same JSON5-aware reader for data files too
+import { readJSON } from "../lib/config/utils.js";
+
+// --- Resolve __dirname (ESM) ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- Config locations (adjust if your tree is different) ---
-const CONFIG_DIR = path.resolve(__dirname, "../config");
-const MAPPINGS_DIR = path.join(CONFIG_DIR, "mappings");
-const ENV_DIR = path.join(CONFIG_DIR, "env"); // optional overlays: config/env/dev, etc.
-const DATA_ROOT = path.resolve(__dirname, "../"); // data paths in pipeline are relative to repo root
-
-// --- CLI/env options ---
-const ENV_NAME = process.env.LOADER_ENV || "dev"; // dev|qa|prod
-const PIPELINE_BASE = path.join(CONFIG_DIR, "pipeline.json");
-const PIPELINE_ENV = path.join(ENV_DIR, ENV_NAME, "pipeline.json");
-const CONSTANTS_BASE = path.join(CONFIG_DIR, "constants.json");
-const CONSTANTS_ENV = path.join(ENV_DIR, ENV_NAME, "constants.json");
-
+// --- Env / paths ---
+const ENV_NAME = process.env.LOADER_ENV || process.env.NODE_ENV || "dev";
 const DRY_RUN = String(process.env.DRY_RUN || "").toLowerCase() === "true";
+const DATA_ROOT = path.resolve(__dirname, "../"); // pipeline data paths are repo-root relative
 
 // ---------- Small utils ----------
 const loadedFiles = Object.create(null);
-
-function readJSON(p) {
-  const raw = fs.readFileSync(p, "utf8").replace(/^\uFEFF/, ""); // strip BOM
-  return JSON5.parse(raw); // accepts comments & trailing commas
-}
-
-function deepMerge(target, ...sources) {
-  for (const src of sources) {
-    if (!src) continue;
-    for (const [k, v] of Object.entries(src)) {
-      if (v && typeof v === "object" && !Array.isArray(v)) {
-        target[k] = deepMerge(target[k] || {}, v);
-      } else {
-        target[k] = v;
-      }
-    }
-  }
-  return target;
-}
-
-function loadConstants() {
-  const base = fs.existsSync(CONSTANTS_BASE) ? readJSON(CONSTANTS_BASE) : {};
-  const envPath = CONSTANTS_ENV;
-  const env = fs.existsSync(envPath) ? readJSON(envPath) : {};
-  return deepMerge({}, base, env);
-}
-
-function loadPipeline() {
-  if (!fs.existsSync(PIPELINE_BASE)) {
-    throw new Error(`Missing pipeline at ${PIPELINE_BASE}`);
-  }
-  const base = readJSON(PIPELINE_BASE);
-  const env = fs.existsSync(PIPELINE_ENV) ? readJSON(PIPELINE_ENV) : {};
-  return deepMerge({}, base, env);
-}
-
-function loadObjectConfig(objectName) {
-  const baseFile = path.join(MAPPINGS_DIR, `${objectName}.json`);
-  if (!fs.existsSync(baseFile)) {
-    throw new Error(`Mapping not found for ${objectName}: ${baseFile}`);
-  }
-  const base = readJSON(baseFile);
-
-  const envFile = path.join(ENV_DIR, ENV_NAME, `${objectName}.json`);
-  const env = fs.existsSync(envFile) ? readJSON(envFile) : {};
-  return deepMerge({}, base, env);
-}
 
 function loadDataFile(absOrRel) {
   const filePath = path.isAbsolute(absOrRel) ? absOrRel : path.join(DATA_ROOT, absOrRel);
@@ -158,8 +103,9 @@ async function main() {
     console.log(`[${nowIso()}] [System] DRY_RUN enabled — will not write to Salesforce`);
   }
 
-  const constants = loadConstants();
-  const pipelineCfg = loadPipeline();
+  // Centralized config loading
+  const constants = loadConstants({ envName: ENV_NAME });
+  const pipelineCfg = loadPipeline({ envName: ENV_NAME });
 
   const pipelineDryRun = Boolean(pipelineCfg.dryRun);
   const effectiveDryRun = DRY_RUN || pipelineDryRun;
@@ -181,24 +127,33 @@ async function main() {
   };
 
   for (const step of stepsOrdered) {
+    if (!step.object) throw new Error(`Step missing 'object'. Step: ${JSON.stringify(step)}`);
+    if (!step.dataFile) throw new Error(`Step for ${step.object} missing 'dataFile'`);
+    if (!step.configFile) throw new Error(`Step for ${step.object} must include 'configFile'.`);
+
     const obj = step.object;
-    const cfg = loadObjectConfig(obj);
+
+    // Per-step mapping (base -> env -> step.configFile -> step.configInline)
+    const cfg = loadStepConfig(step, {
+      envName: ENV_NAME,
+      // baseDir/envDir default to <cwd>/config/base and <cwd>/config/env — override here if needed
+      cwd: path.resolve(__dirname, ".."),
+      cache: true
+    });
+
     console.log(`[${nowIso()}] [System] START🚀: ${obj}`);
+    console.log(`[${nowIso()}] [${obj}] Using config file: ${step.configFile}`);
 
-    if (!step.dataFile) {
-      throw new Error(`Step for ${obj} missing 'dataFile'`);
-    }
     const rawData = loadDataFile(step.dataFile);
-
     const baseData = step.dataKey ? rawData[step.dataKey] : rawData;
     if (!Array.isArray(baseData)) {
       const keys = Array.isArray(rawData) ? "(root is array)" : Object.keys(rawData || {});
       throw new Error(`Data at key '${step.dataKey || "<root>"}' for ${obj} is not an array. Available keys: ${keys}`);
     }
 
-    // ✅ Config-driven filter
+    // Filter at step level (optional)
     const working = applyFilter(baseData, step.filter);
-    console.log(`[${nowIso()}] [${obj}] RECORDS tO PROCESS: ${working.length}`);
+    console.log(`[${nowIso()}] [${obj}] RECORDS TO PROCESS: ${working.length}`);
 
     let finalData;
     if ((step.mode || "").toLowerCase() === "generate") {
@@ -238,6 +193,7 @@ async function main() {
       dataKey: step.dataKey || "<root>",
       mode: (step.mode || "direct").toLowerCase(),
       generator: step.generator || null,
+      configFile: step.configFile,
       attempted: finalData.length,
       ok: okCount,
       errors: errCount,
@@ -246,7 +202,7 @@ async function main() {
     runReport.totals.attempted += finalData.length;
     runReport.totals.insertedOrUpserted += okCount;
     runReport.totals.errors += errCount;
-    
+
     console.log(`[${nowIso()}] [System] END: ${obj}`);
   }
 

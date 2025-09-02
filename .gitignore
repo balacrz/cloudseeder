@@ -2,6 +2,7 @@
 #config
 .gitconfig
 .gitignore
+lib/utils-*.js
 
 # Logs
 logs
