@@ -33,6 +33,11 @@ Setup .env file
    ```bash
    npm start
 
+## Quick Start Videos
+
+[link text](https://youtu.be/T8UvFeC5emg "High Level")
+[link text](https://youtu.be/-xqmWcOttfY "Demo")
+
 ## More details
 
 For deeper documentation (Sample use cases, configuration guides, mapping & pipeline references, and troubleshooting), see the **`docs/`** folder in this repository.
