@@ -22,11 +22,12 @@ Manual seeding is brittle: hard-coded IDs, fragile relationship chains, no easy 
    npm install
 
 2. **Configure Org**
-Configure access (env vars)
+Setup .env file
 
 export SF_LOGIN_URL="https://login.salesforce.com"
 export SF_USERNAME="you@example.com"
 export SF_PASSWORD="yourPassword +yourSecurityToken"
 
 3. **Load Data**
-export LOADER_ENV=dev   # or qa/prod
+   ```bash
+   npm start
