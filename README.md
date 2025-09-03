@@ -35,8 +35,8 @@ Setup .env file
 
 ## Quick Start Videos
 
-[High Level Project Structure](https://youtu.be/T8UvFeC5emg "High Level")
-[Sales Cloud Demo](https://youtu.be/-xqmWcOttfY "Demo")
+- [High Level Project Structure](https://youtu.be/T8UvFeC5emg "High Level")
+- [Sales Cloud Demo](https://youtu.be/-xqmWcOttfY "Demo")
 
 ## More details
 
