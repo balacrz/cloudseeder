@@ -7,7 +7,7 @@
       "dataFile": "data/seed.json",
       "dataKey": "Account",
       "mode": "direct",
-      "configFile": "./config/mapping/Account.json",
+      "configFile": "./config/mappings/Account.json",
       "dependsOn": []
     },
     {
@@ -15,7 +15,7 @@
       "dataFile": "data/seed.json",
       "dataKey": "Contact",
       "mode": "direct",
-      "configFile": "./config/mapping/Contact.json",
+      "configFile": "./config/mappings/Contact.json",
       "dependsOn": ["Account"]
     },
     {
@@ -23,7 +23,7 @@
       "dataFile": "data/seed.json",
       "dataKey": "Opportunity",
       "mode": "direct",
-      "configFile": "./config/mapping/Opportunity.json",
+      "configFile": "./config/mappings/Opportunity.json",
       "dependsOn": ["Account", "Contact"]
     }
   ]

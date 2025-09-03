@@ -1,5 +1,4 @@
 {
-  // Upsert by Opportunity.External_Id__c
   "identify": { "matchKey": "External_Id__c" },
 
   "shape": {
@@ -7,7 +6,6 @@
       "ExternalKey": "External_Id__c"
     },
     "defaults": {
-      // If seed close date is missing, use constant
       "StageName": "${constants.oppty.defaultStageName}",
       "CloseDate": "${constants.oppty.defaultCloseDate}"
     },
@@ -16,7 +14,6 @@
 
   "transform": {
     "pre": [
-      // Ensure Name is present
       { "op": "coalesce", "out": "Name", "from": ["Name", "External_Id__c"], "default": "New Opportunity" }
     ],
     "post": [

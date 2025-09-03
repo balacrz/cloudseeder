@@ -1,5 +1,4 @@
 {
-  // Upsert by Contact.BKAI__External_Id__c
   "identify": { "matchKey": "BKAI__External_Id__c" },
 
   "shape": {
@@ -14,7 +13,6 @@
 
   "transform": {
     "pre": [
-      // Coalesce name fields if your seed is sparse
       { "op": "coalesce", "out": "LastName", "from": ["LastName", "Name"], "default": "Unknown" }
     ],
     "post": [
