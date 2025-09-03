@@ -35,7 +35,7 @@ Setup .env file
 
 ## More details
 
-For deeper documentation (architecture notes, configuration guides, mapping & pipeline references, troubleshooting, and FAQs), see the **`docs/`** folder in this repository.
+For deeper documentation (Sample use cases, configuration guides, mapping & pipeline references, and troubleshooting), see the **`docs/`** folder in this repository.
 
 ## License
 
