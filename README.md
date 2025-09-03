@@ -23,7 +23,7 @@ Manual seeding is brittle: hard-coded IDs, fragile relationship chains, no easy 
 
 2. **Configure Org**
 Setup .env file
-
+    ```bash
 export SF_LOGIN_URL="https://login.salesforce.com"
 export SF_USERNAME="you@example.com"
 export SF_PASSWORD="yourPassword +yourSecurityToken"
