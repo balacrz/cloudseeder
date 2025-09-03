@@ -33,6 +33,10 @@ Setup .env file
    ```bash
    npm start
 
+## More details
+
+For deeper documentation (architecture notes, configuration guides, mapping & pipeline references, troubleshooting, and FAQs), see the **`docs/`** folder in this repository.
+
 ## License
 
 The license for wit-go can be found in LICENSE file in the root directory of
