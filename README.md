@@ -24,11 +24,16 @@ Manual seeding is brittle: hard-coded IDs, fragile relationship chains, no easy 
 2. **Configure Org**
 Setup .env file
     ```
-    export SF_LOGIN_URL="https://login.salesforce.com".··
-    export SF_USERNAME="you@example.com".··
-    export SF_PASSWORD="yourPassword +yourSecurityToken".··
+    export SF_LOGIN_URL="https://login.salesforce.com"
+    export SF_USERNAME="you@example.com"
+    export SF_PASSWORD="yourPassword +yourSecurityToken"
     ```
 
 3. **Load Data**
    ```bash
    npm start
+
+## License
+
+The license for wit-go can be found in LICENSE file in the root directory of
+this source tree.
