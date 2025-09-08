@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 
 import { getConnection } from "../lib/auth.js";
 import { insertAndMap } from "../lib/loader.js";
+import { setOrgId } from "../lib/runcontext.js";
 
 // filters & generators
 import { applyFilter } from "../lib/filters.js";
@@ -14,6 +15,9 @@ import { generators as legacyGenerators } from "../services/generators.js";
 import { loadStepConfig, loadPipeline, loadConstants } from "../lib/config/index.js";
 // reuse the same JSON5-aware reader for data files too
 import { readJSON } from "../lib/config/utils.js";
+
+// ✅ NEW: metadata snapshot (org-aware)
+import { snapshotOrgMetadata } from "../lib/metadata.min.js";
 
 // --- Resolve __dirname (ESM) ---
 const __filename = fileURLToPath(import.meta.url);
@@ -114,6 +118,31 @@ async function main() {
     throw new Error("pipeline.json missing non-empty 'steps' array");
   }
 
+  // ✅ Compute the unique object list from the pipeline itself
+  const pipelineObjects = Array.from(
+    new Set(
+      (pipelineCfg.steps || [])
+        .map(s => String(s.object || "").trim())
+        .filter(Boolean)
+    )
+  ).sort();
+
+  // ✅ Snapshot metadata for ONLY those objects, under meta-data/<ORG_ID>/
+  if (conn) {
+    console.log(`[${nowIso()}] [System] Snapshotting org metadata for ${pipelineObjects.length} object(s)…`);
+    const snapshot =  await snapshotOrgMetadata(conn, {
+      objectNames: pipelineObjects,
+      metaDir: path.resolve(__dirname, "../meta-data"),
+      orgId: undefined, // optional override; normally resolved from conn.identity()
+      forceRefresh: String(process.env.REFRESH_METADATA || "").toLowerCase() === "true",
+      concurrency: 2 // gentle concurrency; raise carefully if needed
+    });
+    setOrgId(snapshot.orgId); // ✅ set once for the whole run
+    console.log(`[${nowIso()}] [System] Metadata snapshot complete.`);
+  } else {
+    console.log(`[${nowIso()}] [System] Skipping metadata snapshot (no connection in DRY_RUN).`);
+  }
+
   const stepsOrdered = topoSortSteps(pipelineCfg.steps);
   console.log(`[${nowIso()}] [System] Total Steps: ${stepsOrdered.length}`);
 
@@ -178,6 +207,7 @@ async function main() {
       console.log(`[${nowIso()}] [System] DRY_RUN preview (${obj}):`, JSON.stringify(preview, null, 2));
       okCount = finalData.length;
     } else {
+      // 🔒 Ensure we await insertAndMap so idMaps are ready for downstream steps
       idMap = await insertAndMap(conn, obj, finalData, cfg, idMaps, constants);
       okCount = Object.keys(idMap).length;
       errCount = Math.max(0, finalData.length - okCount);
@@ -185,7 +215,9 @@ async function main() {
     }
 
     const recEnd = Date.now();
-    console.log(`[${nowIso()}] [System] SUMMARY: ${obj} (ok=${okCount}, errors=${errCount}, elapsed=${ms(recStart, recEnd)})`);
+    console.log(
+      `[${nowIso()}] [System] SUMMARY: ${obj} (ok=${okCount}, errors=${errCount}, elapsed=${ms(recStart, recEnd)})`
+    );
 
     runReport.steps.push({
       object: obj,
