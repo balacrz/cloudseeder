@@ -63,11 +63,14 @@ function topoSortSteps(steps) {
   }
 
   const q = [];
-  for (let i = 0; i < steps.length; i++) if (indeg[i] === 0) q.push(i);
+  for (let i = 0; i < steps.length; i++) {
+    if (indeg[i] === 0) q.push(i);
+  }
 
   const order = [];
   while (q.length) {
-    const u = q.shift();
+    // Always pick the smallest index (original JSON order)
+    const u = q.sort((a, b) => a - b).shift();
     order.push(u);
     for (const v of adj[u]) {
       indeg[v]--;

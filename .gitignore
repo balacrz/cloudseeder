@@ -2,7 +2,13 @@
 #config
 .gitconfig
 .gitignore
+
+meta-data/*
 lib/utils-*.js
+lib/metadata.js
+
+package-lock.json
+.env
 
 # Logs
 logs
