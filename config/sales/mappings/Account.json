@@ -1,9 +1,9 @@
 {
-  "identify": { "matchKey": "BKAI__External_Id__c" },
+  "identify": { "matchKey": "External_Id__c" },
 
   "shape": {
     "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
+      "ExternalKey": "External_Id__c"
     },
     "defaults": {
       "Type": "Customer"
@@ -22,13 +22,13 @@
   ],
 
   "validate": {
-    "requiredFields": ["Name", "BKAI__External_Id__c"],
-    "uniqueBy": ["BKAI__External_Id__c"]
+    "requiredFields": ["Name", "External_Id__c"],
+    "uniqueBy": ["External_Id__c"]
   },
 
   "strategy": {
     "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
+    "externalIdField": "External_Id__c",
     "api": "rest",
     "batchSize": 200
   }
