@@ -16,8 +16,11 @@ import { loadStepConfig, loadPipeline, loadConstants } from "../lib/config/index
 // reuse the same JSON5-aware reader for data files too
 import { readJSON } from "../lib/config/utils.js";
 
-// ✅ NEW: metadata snapshot (org-aware)
+// metadata snapshot (org-aware)
 import { snapshotOrgMetadata } from "../lib/metadata.min.js";
+
+//  match key validator (snapshot-based)
+import { validateMatchKeysFromSnapshots } from "../lib/validators/validatematchkeys.js";
 
 // --- Resolve __dirname (ESM) ---
 const __filename = fileURLToPath(import.meta.url);
@@ -121,7 +124,7 @@ async function main() {
     throw new Error("pipeline.json missing non-empty 'steps' array");
   }
 
-  // ✅ Compute the unique object list from the pipeline itself
+  // Compute the unique object list from the pipeline itself
   const pipelineObjects = Array.from(
     new Set(
       (pipelineCfg.steps || [])
@@ -130,7 +133,10 @@ async function main() {
     )
   ).sort();
 
-  // ✅ Snapshot metadata for ONLY those objects, under meta-data/<ORG_ID>/
+  let isSnapshotSuccessful = true;
+  let snapshotOrgId = null; // capture orgId for validator
+
+  // Snapshot metadata for ONLY those objects, under meta-data/<ORG_ID>/
   if (conn) {
     console.log(`[${nowIso()}] [System] Snapshotting org metadata for ${pipelineObjects.length} object(s)…`);
     const snapshot =  await snapshotOrgMetadata(conn, {
@@ -140,14 +146,37 @@ async function main() {
       forceRefresh: String(process.env.REFRESH_METADATA || "").toLowerCase() === "true",
       concurrency: 2 // gentle concurrency; raise carefully if needed
     });
-    setOrgId(snapshot.orgId); // ✅ set once for the whole run
-    console.log(`[${nowIso()}] [System] Metadata snapshot complete.`);
+    if(snapshot.unavailableObjects.length > 0){
+      console.log(`[${nowIso()}] [System] Metadata snapshot failed.`);
+      isSnapshotSuccessful = false;
+    }else{
+      isSnapshotSuccessful = true;
+      snapshotOrgId = snapshot.orgId;     // save for later
+      setOrgId(snapshot.orgId);           // set once for the whole run
+      console.log(`[${nowIso()}] [System] Metadata snapshot complete.`);
+    }
   } else {
     console.log(`[${nowIso()}] [System] Skipping metadata snapshot (no connection in DRY_RUN).`);
   }
 
+  if(!isSnapshotSuccessful){
+    throw new Error(`Snap shot failed`);
+  }
+
   const stepsOrdered = topoSortSteps(pipelineCfg.steps);
   console.log(`[${nowIso()}] [System] Total Steps: ${stepsOrdered.length}`);
+
+  // Validate mapping identify.matchKey fields against SNAPSHOT files
+  if (conn && snapshotOrgId) {
+    await validateMatchKeysFromSnapshots({
+      steps: stepsOrdered,
+      metaDir: path.resolve(__dirname, "../meta-data"),
+      orgId: snapshotOrgId,
+      loadStepConfig,                        // reuse your existing loader
+      envName: ENV_NAME,
+      cwd: path.resolve(__dirname, "..")
+    });
+  }
 
   const idMaps = Object.create(null);
   const runReport = {
@@ -158,7 +187,10 @@ async function main() {
     totals: { attempted: 0, insertedOrUpserted: 0, errors: 0 }
   };
 
+  let stepCount = 0;
+
   for (const step of stepsOrdered) {
+    stepCount++;
     if (!step.object) throw new Error(`Step missing 'object'. Step: ${JSON.stringify(step)}`);
     if (!step.dataFile) throw new Error(`Step for ${step.object} missing 'dataFile'`);
     if (!step.configFile) throw new Error(`Step for ${step.object} must include 'configFile'.`);
@@ -173,7 +205,7 @@ async function main() {
       cache: true
     });
 
-    console.log(`[${nowIso()}] [System] START🚀: ${obj}`);
+    console.log(`[${nowIso()}] [System] START🚀: ${stepCount} - ${obj}`);
     console.log(`[${nowIso()}] [${obj}] Using config file: ${step.configFile}`);
 
     const rawData = loadDataFile(step.dataFile);
@@ -210,7 +242,7 @@ async function main() {
       console.log(`[${nowIso()}] [System] DRY_RUN preview (${obj}):`, JSON.stringify(preview, null, 2));
       okCount = finalData.length;
     } else {
-      // 🔒 Ensure we await insertAndMap so idMaps are ready for downstream steps
+      // Ensure we await insertAndMap so idMaps are ready for downstream steps
       idMap = await insertAndMap(conn, obj, finalData, cfg, idMaps, constants);
       okCount = Object.keys(idMap).length;
       errCount = Math.max(0, finalData.length - okCount);
