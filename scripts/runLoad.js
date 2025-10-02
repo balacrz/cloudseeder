@@ -195,7 +195,8 @@ async function main() {
       envName: ENV_NAME,
       cwd: path.resolve(__dirname, ".."),
       logFn: fileLog,
-      consoleLog: log
+      consoleLog: log,
+      conn
     });
   }
 
@@ -229,7 +230,7 @@ async function main() {
       cache: true
     });
 
-    console.log(`[${nowIso()}] [System] START🚀: ${stepCount} - ${obj}`);
+    console.log(`[${nowIso()}] [System] START🚀: ${stepIndex} - ${obj}`);
     console.log(`[${nowIso()}] [${obj}] Using config file: ${step.configFile}`);
 
     const rawData = loadDataFile(step.dataFile);
