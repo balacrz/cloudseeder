@@ -14,6 +14,14 @@ Salesforce architects, admins, and developers who need repeatable, resilient, an
 - **Batch-Friendly:** Large loads with per-step logging and failure visibility.
 - **Dry Runs & Tracing:** Validate before writing; verbose logs when you need them.
 
+
+## Core Concepts
+- **Seed Data:** Simple JSON objects representing the records you want (with external keys).
+- **Mappings:** JSON rules describing how to shape seeds into SObject payloads, which fields identify uniqueness, and which references to resolve.
+- **Pipeline:** Ordered steps telling Cloud Seeder which object to load, in which mode (insert/upsert), and with which mapping.
+- **Generators (Optional):** Functions that expand or reshape seeds (e.g., create child Accounts from a parent list).
+- **idMaps:** A cross-run dictionary of external keys → Salesforce Ids used for reference resolution and re-runs.
+
 ## Problem statement
 Manual seeding is brittle: hard-coded IDs, fragile relationship chains, no easy preview, and poor repeatability across environments.
 
