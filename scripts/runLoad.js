@@ -17,7 +17,7 @@ import { loadStepConfig, loadPipeline, loadConstants } from "../lib/config/index
 import { readJSON } from "../lib/config/utils.js";
 
 // metadata snapshot (org-aware)
-import { snapshotOrgMetadata } from "../lib/metadata.js";
+import { snapshotOrgMetadata } from "../lib/metadata.min.js";
 
 //  match key validator (snapshot-based)
 import { validateMatchKeysFromSnapshots } from "../lib/validators/validatematchkeys.js";
