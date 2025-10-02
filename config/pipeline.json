@@ -4,26 +4,26 @@
   "steps": [
     {
       "object": "Account",
-      "dataFile": "data/seed.json",
+      "dataFile": "./config/sales/data/seed.json",
       "dataKey": "Account",
       "mode": "direct",
-      "configFile": "./config/mappings/Account.json",
+      "configFile": "./config/sales/mappings/Account.json",
       "dependsOn": []
     },
     {
       "object": "Contact",
-      "dataFile": "data/seed.json",
+      "dataFile": "./config/sales/data/seed.json",
       "dataKey": "Contact",
       "mode": "direct",
-      "configFile": "./config/mappings/Contact.json",
+      "configFile": "./config/sales/mappings/Contact.json",
       "dependsOn": ["Account"]
     },
     {
       "object": "Opportunity",
-      "dataFile": "data/seed.json",
+      "dataFile": "./config/sales/data/seed.json",
       "dataKey": "Opportunity",
       "mode": "direct",
-      "configFile": "./config/mappings/Opportunity.json",
+      "configFile": "./config/sales/mappings/Opportunity.json",
       "dependsOn": ["Account", "Contact"]
     }
   ]

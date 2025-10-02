@@ -16,8 +16,17 @@ import { loadStepConfig, loadPipeline, loadConstants } from "../lib/config/index
 // reuse the same JSON5-aware reader for data files too
 import { readJSON } from "../lib/config/utils.js";
 
-// ✅ NEW: metadata snapshot (org-aware)
-import { snapshotOrgMetadata } from "../lib/metadata.min.js";
+// metadata snapshot (org-aware)
+import { snapshotOrgMetadata } from "../lib/metadata.js";
+
+//  match key validator (snapshot-based)
+import { validateMatchKeysFromSnapshots } from "../lib/validators/validatematchkeys.js";
+
+// your console logger
+import { log } from "../lib/utils/logger.js";
+
+// single-file run logger
+import { createRunLogSingle } from "../lib/utils/runlog.js";
 
 // --- Resolve __dirname (ESM) ---
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +39,8 @@ const DATA_ROOT = path.resolve(__dirname, "../"); // pipeline data paths are rep
 
 // ---------- Small utils ----------
 const loadedFiles = Object.create(null);
+const nowIso = () => new Date().toISOString();
+const ms = (s, e) => `${(e - s).toLocaleString()} ms`;
 
 function loadDataFile(absOrRel) {
   const filePath = path.isAbsolute(absOrRel) ? absOrRel : path.join(DATA_ROOT, absOrRel);
@@ -63,11 +74,14 @@ function topoSortSteps(steps) {
   }
 
   const q = [];
-  for (let i = 0; i < steps.length; i++) if (indeg[i] === 0) q.push(i);
+  for (let i = 0; i < steps.length; i++) {
+    if (indeg[i] === 0) q.push(i);
+  }
 
   const order = [];
   while (q.length) {
-    const u = q.shift();
+    // Always pick the smallest index (original JSON order)
+    const u = q.sort((a, b) => a - b).shift();
     order.push(u);
     for (const v of adj[u]) {
       indeg[v]--;
@@ -76,7 +90,7 @@ function topoSortSteps(steps) {
   }
 
   if (order.length !== steps.length) {
-    console.warn("[System] Warning⚠️: dependsOn produced a cycle or unresolved edges; using original order.");
+    log.warn("System", "dependsOn produced a cycle; using original order.");
     return steps;
   }
   return order.map((idx) => steps[idx]);
@@ -90,21 +104,25 @@ function runGenerator(step, rawData, idMaps) {
   return fn(rawData, idMaps);
 }
 
-// ---------- Logging helpers ----------
-function nowIso() { return new Date().toISOString(); }
-function ms(s, e) { return `${(e - s).toLocaleString()} ms`; }
+let runLog = null;
 
 // ---------- Main ----------
 async function main() {
+  runLog = createRunLogSingle("logs"); // logs/run-<stamp>.log (single file)
+  const fileLog = (tag, msg) => runLog.write(tag, msg);
+
   const totalStart = Date.now();
-  console.log(`[${nowIso()}] [System] ENV=${ENV_NAME} DRY_RUN=${DRY_RUN}`);
+  log.info("System", `ENV=${ENV_NAME} DRY_RUN=${DRY_RUN}`);
+  fileLog("System", `Start — ENV=${ENV_NAME} DRY_RUN=${DRY_RUN}`);
 
   let conn = null;
   if (!DRY_RUN) {
     conn = await getConnection();
-    console.log(`[${nowIso()}] [System] Authenticated to Salesforce`);
+    log.info("System", "Authenticated to Salesforce ✅");
+    fileLog("System", "Authenticated to Salesforce ✅");
   } else {
-    console.log(`[${nowIso()}] [System] DRY_RUN enabled — will not write to Salesforce`);
+    log.info("System", "DRY_RUN enabled — will not write to Salesforce");
+    fileLog("System", "DRY_RUN enabled — will not write to Salesforce");
   }
 
   // Centralized config loading
@@ -118,7 +136,7 @@ async function main() {
     throw new Error("pipeline.json missing non-empty 'steps' array");
   }
 
-  // ✅ Compute the unique object list from the pipeline itself
+  // Compute the unique object list from the pipeline itself
   const pipelineObjects = Array.from(
     new Set(
       (pipelineCfg.steps || [])
@@ -127,9 +145,12 @@ async function main() {
     )
   ).sort();
 
-  // ✅ Snapshot metadata for ONLY those objects, under meta-data/<ORG_ID>/
+  let isSnapshotSuccessful = true;
+  let snapshotOrgId = null; // capture orgId for validator
+
+  // Snapshot metadata for ONLY those objects, under meta-data/<ORG_ID>/
   if (conn) {
-    console.log(`[${nowIso()}] [System] Snapshotting org metadata for ${pipelineObjects.length} object(s)…`);
+    fileLog("SNAPSHOT", `Starting… objects=${pipelineObjects.length}`);
     const snapshot =  await snapshotOrgMetadata(conn, {
       objectNames: pipelineObjects,
       metaDir: path.resolve(__dirname, "../meta-data"),
@@ -137,14 +158,47 @@ async function main() {
       forceRefresh: String(process.env.REFRESH_METADATA || "").toLowerCase() === "true",
       concurrency: 2 // gentle concurrency; raise carefully if needed
     });
-    setOrgId(snapshot.orgId); // ✅ set once for the whole run
-    console.log(`[${nowIso()}] [System] Metadata snapshot complete.`);
+    if(snapshot.unavailableObjects.length > 0){
+      const msg = `Metadata snapshot failed; unavailable=${snapshot.unavailableObjects.join(",")}`;
+      log.error("System", msg);
+      fileLog("SNAPSHOT", msg);
+      isSnapshotSuccessful = false;
+    } else {
+      isSnapshotSuccessful = true;
+      snapshotOrgId = snapshot.orgId;
+      setOrgId(snapshot.orgId);
+      log.info("System", `Metadata snapshot complete ✅ orgId=${snapshot.orgId}`);
+      fileLog("SNAPSHOT", `Complete ✅ orgId=${snapshot.orgId}`);
+    }
   } else {
-    console.log(`[${nowIso()}] [System] Skipping metadata snapshot (no connection in DRY_RUN).`);
+    log.warn("System", "Skipping metadata snapshot (no connection in DRY_RUN)");
+    fileLog("SNAPSHOT", "Skipping metadata snapshot (no connection in DRY_RUN)");
+  }
+
+  if(!isSnapshotSuccessful){
+    runLog.writeJson("System", "Fatal", { error: "Snapshot failed" });
+    runLog.close();
+    throw new Error(`Snapshot failed`);
   }
 
   const stepsOrdered = topoSortSteps(pipelineCfg.steps);
-  console.log(`[${nowIso()}] [System] Total Steps: ${stepsOrdered.length}`);
+  log.info("System", `Total Steps: ${stepsOrdered.length}`);
+  fileLog("System", `Total Steps: ${stepsOrdered.length}`);
+
+  // Validate match keys vs snapshot — all into same single log
+  if (conn && snapshotOrgId) {
+    await validateMatchKeysFromSnapshots({
+      steps: stepsOrdered,
+      metaDir: path.resolve(__dirname, "../meta-data"),
+      orgId: snapshotOrgId,
+      loadStepConfig,                        // reuse your existing loader
+      envName: ENV_NAME,
+      cwd: path.resolve(__dirname, ".."),
+      logFn: fileLog,
+      consoleLog: log,
+      conn
+    });
+  }
 
   const idMaps = Object.create(null);
   const runReport = {
@@ -155,14 +209,20 @@ async function main() {
     totals: { attempted: 0, insertedOrUpserted: 0, errors: 0 }
   };
 
+  let stepIndex = 0;
+
   for (const step of stepsOrdered) {
+    stepIndex++;
     if (!step.object) throw new Error(`Step missing 'object'. Step: ${JSON.stringify(step)}`);
     if (!step.dataFile) throw new Error(`Step for ${step.object} missing 'dataFile'`);
     if (!step.configFile) throw new Error(`Step for ${step.object} must include 'configFile'.`);
 
     const obj = step.object;
 
-    // Per-step mapping (base -> env -> step.configFile -> step.configInline)
+    log.info(obj, `START 🚀 #${stepIndex} • config=${step.configFile}`);
+    fileLog(`STEP:${obj}`, `START 🚀 #${stepIndex} • config=${step.configFile}`);
+    log.stepStart(obj);
+
     const cfg = loadStepConfig(step, {
       envName: ENV_NAME,
       // baseDir/envDir default to <cwd>/config/base and <cwd>/config/env — override here if needed
@@ -170,32 +230,34 @@ async function main() {
       cache: true
     });
 
-    console.log(`[${nowIso()}] [System] START🚀: ${obj}`);
+    console.log(`[${nowIso()}] [System] START🚀: ${stepIndex} - ${obj}`);
     console.log(`[${nowIso()}] [${obj}] Using config file: ${step.configFile}`);
 
     const rawData = loadDataFile(step.dataFile);
     const baseData = step.dataKey ? rawData[step.dataKey] : rawData;
     if (!Array.isArray(baseData)) {
       const keys = Array.isArray(rawData) ? "(root is array)" : Object.keys(rawData || {});
-      throw new Error(`Data at key '${step.dataKey || "<root>"}' for ${obj} is not an array. Available keys: ${keys}`);
+      throw new Error(`Data at key '${step.dataKey || "<root>"}' for ${obj} is not an array. Keys: ${keys}`);
     }
 
     // Filter at step level (optional)
     const working = applyFilter(baseData, step.filter);
-    console.log(`[${nowIso()}] [${obj}] RECORDS TO PROCESS: ${working.length}`);
+    const mode = (step.mode || "direct").toLowerCase();
+    log.info(obj, `Records to process: ${working.length} (mode=${mode})`);
+    fileLog(`STEP:${obj}`, `Records to process: ${working.length} (mode=${mode})`);
 
     let finalData;
-    if ((step.mode || "").toLowerCase() === "generate") {
-      console.log(`[${nowIso()}] [${obj}] Running generator: ${step.generator}`);
+    if (mode === "generate") {
+      log.info(obj, `Running generator: ${step.generator}`);
+      fileLog(`STEP:${obj}`, `Running generator: ${step.generator}`);
       finalData = runGenerator(step, rawData, idMaps);
-      if (!Array.isArray(finalData)) {
-        throw new Error(`Generator '${step.generator}' for ${obj} did not return an array`);
-      }
+      if (!Array.isArray(finalData)) throw new Error(`Generator '${step.generator}' for ${obj} did not return an array`);
     } else {
       finalData = working;
     }
 
-    console.log(`[${nowIso()}] [${obj}] RECORDS PROCESSED: ${finalData.length}`);
+    log.debug(obj, `Processed record count: ${finalData.length}`);
+    fileLog(`STEP:${obj}`, `Processed record count: ${finalData.length}`);
 
     const recStart = Date.now();
     let idMap = {};
@@ -203,11 +265,11 @@ async function main() {
     let errCount = 0;
 
     if (effectiveDryRun) {
-      const preview = finalData.slice(0, Math.min(3, finalData.length));
-      console.log(`[${nowIso()}] [System] DRY_RUN preview (${obj}):`, JSON.stringify(preview, null, 2));
+      const sample = finalData.slice(0, Math.min(3, finalData.length));
+      log.debug(obj, `DRY_RUN sample: ${JSON.stringify(sample)}`);
+      fileLog(`STEP:${obj}`, `DRY_RUN sample: ${JSON.stringify(sample)}`);
       okCount = finalData.length;
     } else {
-      // 🔒 Ensure we await insertAndMap so idMaps are ready for downstream steps
       idMap = await insertAndMap(conn, obj, finalData, cfg, idMaps, constants);
       okCount = Object.keys(idMap).length;
       errCount = Math.max(0, finalData.length - okCount);
@@ -215,9 +277,9 @@ async function main() {
     }
 
     const recEnd = Date.now();
-    console.log(
-      `[${nowIso()}] [System] SUMMARY: ${obj} (ok=${okCount}, errors=${errCount}, elapsed=${ms(recStart, recEnd)})`
-    );
+    const summary = `ok=${okCount} errors=${errCount} elapsed=${ms(recStart, recEnd)}`;
+    log.info(obj, `SUMMARY ✅ ${summary}`);
+    fileLog(`STEP:${obj}`, `SUMMARY ✅ ${summary}`);
 
     runReport.steps.push({
       object: obj,
@@ -235,17 +297,35 @@ async function main() {
     runReport.totals.insertedOrUpserted += okCount;
     runReport.totals.errors += errCount;
 
-    console.log(`[${nowIso()}] [System] END: ${obj}`);
+    log.stepEnd(obj, summary);
+    fileLog(`STEP:${obj}`, `END 🏁 ${summary}`);
   }
 
   const totalEnd = Date.now();
   runReport.finishedAt = new Date(totalEnd).toISOString();
   runReport.totalElapsedMs = totalEnd - totalStart;
 
-  console.log(`[${nowIso()}] [System] Completed ✅ total=${ms(totalStart, totalEnd)}`);
+  // Append the final report JSON into the SAME single log file
+  runLog.writeJson("System", "RUN REPORT", runReport);
+
+  log.info("System", `Completed ✅ total=${ms(totalStart, totalEnd)} • logFile=${runLog.path}`);
+  fileLog("System", `Completed ✅ total=${ms(totalStart, totalEnd)} • logFile=${runLog.path}`);
+
+  runLog.close();
 }
 
-main().catch((err) => {
-  console.error(`[${new Date().toISOString()}] [System] ERROR❌:`, err?.stack || err?.message || err);
-  process.exit(1);
+main().catch(async (err) => {
+  const msg = err?.message || err?.stack || String(err);
+  try {
+    if(runLog){
+      runLog.write("System", `ERROR❌ ${msg}`);
+      runLog.close();
+      console.error(`[${new Date().toISOString()}] [System] 1 ERROR❌:`, msg);
+      await new Promise(res => setTimeout(res, 10));
+      process.exit(1);
+    }else{
+      console.log('RUN LOG NOT AVAILABLE');
+    }
+  } catch (err) {
+  }
 });
