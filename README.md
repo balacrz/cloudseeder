@@ -1,9 +1,18 @@
-# CloudSeeder
+# Cloud Seeder – Config-Driven Salesforce Data Loader
 
-Config-driven Salesforce data seeding & upsert pipeline that turns plain data into ready-to-load records, resolves relationships automatically, and commits in batches—safely previewable with a dry-run.
+Cloud Seeder is a Node.js–based, configuration-driven data loader for Salesforce.
+It transforms seed data into Salesforce payloads using declarative mappings and a pipeline, handling object relationships, upserts, and synthetic data generation—without writing custom code for every load.
 
-## Introduction
-CloudSeeder streamlines populating a target org with realistic, interconnected data. It separates what to load from how to shape and relate it, applies reusable transforms, and resolves references without hand-crafted IDs.
+## Who is it for?
+Salesforce architects, admins, and developers who need repeatable, resilient, and hierarchy-aware data loading for demos, sandboxes, and test environments.
+
+## What Cloud Seeder Delivers
+- **Config-Driven Loads:** No ad-hoc scripts—define mappings and a pipeline once, reuse everywhere.
+- **Hierarchy Handling:** Load parent→child records (e.g., Account → Contact → Opportunity) with reference resolution.
+- **True Upsert:** Identify by External Id or composite keys; avoid duplicates across runs.
+- **Synthetic Data:** Optional generators to fabricate realistic hierarchies for demos and QA.
+- **Batch-Friendly:** Large loads with per-step logging and failure visibility.
+- **Dry Runs & Tracing:** Validate before writing; verbose logs when you need them.
 
 ## Problem statement
 Manual seeding is brittle: hard-coded IDs, fragile relationship chains, no easy preview, and poor repeatability across environments.
