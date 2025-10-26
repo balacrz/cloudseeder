@@ -12,7 +12,8 @@
   "dependencies": {
     "chalk": "^5.3.0",
     "dotenv": "^16.3.1",
-    "jsforce": "^1.10.1",
-    "json5": "^2.2.3"
+    "jsforce": "^3.10.8",
+    "json5": "^2.2.3",
+    "jszip": "^3.10.1"
   }
 }
