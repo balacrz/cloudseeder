@@ -2,19 +2,15 @@
   "identify": { "matchKey": "External_Id__c" },
 
   "shape": {
-    "fieldMap": {
-      "ExternalKey": "External_Id__c"
-    },
+    "fieldMap": {},
     "defaults": {
       "Type": "Customer"
     },
-    "removeFields": ["_debug"]
+    "removeFields": []
   },
 
   "transform": {
-    "pre": [
-      { "op": "coalesce", "out": "Name", "from": ["Name", "Code__c"], "default": "Unnamed Account" }
-    ],
+    "pre": [],
     "post": []
   },
 
@@ -29,7 +25,7 @@
   "strategy": {
     "operation": "upsert",
     "externalIdField": "External_Id__c",
-    "api": "rest",
+    "api": "bulk",
     "batchSize": 200
   }
 }

@@ -2,20 +2,16 @@
   "identify": { "matchKey": "External_Id__c" },
 
   "shape": {
-    "fieldMap": {
-      "ExternalKey": "External_Id__c"
-    },
+    "fieldMap": {},
     "defaults": {
       "StageName": "${constants.oppty.defaultStageName}",
       "CloseDate": "${constants.oppty.defaultCloseDate}"
     },
-    "removeFields": ["_debug"]
+    "removeFields": []
   },
 
   "transform": {
-    "pre": [
-      { "op": "coalesce", "out": "Name", "from": ["Name", "External_Id__c"], "default": "New Opportunity" }
-    ],
+    "pre": [],
     "post": [
         { "op": "remove", "field": "AccountExternalId" },
         { "op": "remove", "field": "External_Id__c" }

@@ -2,19 +2,13 @@
   "identify": { "matchKey": "External_Id__c" },
 
   "shape": {
-    "fieldMap": {
-      "ExternalKey": "External_Id__c"
-    },
-    "defaults": {
-      "LastName": "Unknown"
-    },
-    "removeFields": ["_debug"]
+    "fieldMap": {},
+    "defaults": {},
+    "removeFields": []
   },
 
   "transform": {
-    "pre": [
-      { "op": "coalesce", "out": "LastName", "from": ["LastName", "Name"], "default": "Unknown" }
-    ],
+    "pre": [],
     "post": [
         { "op": "remove", "field": "AccountExternalId" }
     ]
