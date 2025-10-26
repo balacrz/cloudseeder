@@ -13,8 +13,7 @@
   "transform": {
     "pre": [],
     "post": [
-        { "op": "remove", "field": "AccountExternalId" },
-        { "op": "remove", "field": "External_Id__c" }
+        { "op": "remove", "field": "AccountExternalId" }
     ]
   },
 
@@ -28,13 +27,14 @@
   ],
 
   "validate": {
-    "requiredFields": ["Name", "StageName", "CloseDate", "AccountId"],
-    "uniqueBy": []
+    "requiredFields": ["External_Id__c", "Name", "StageName", "CloseDate", "AccountId"],
+    "uniqueBy": ["External_Id__c"]
   },
 
   "strategy": {
-    "operation": "insert",
-    "api": "rest",
+    "operation": "upsert",
+    "externalIdField": "External_Id__c",
+    "api": "bulk",
     "batchSize": 200
   }
 }

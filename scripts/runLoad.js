@@ -219,8 +219,8 @@ async function main() {
 
     const obj = step.object;
 
-    log.info(obj, `START 🚀 #${stepIndex} • config=${step.configFile}`);
-    fileLog(`STEP:${obj}`, `START 🚀 #${stepIndex} • config=${step.configFile}`);
+    log.info(obj, `START 🚀 #${stepIndex} [${obj}] Using config file=${step.configFile}`);
+    fileLog(`STEP:${obj}`, `START 🚀 #${stepIndex} [${obj}] Using config file=${step.configFile}`);
     log.stepStart(obj);
 
     const cfg = loadStepConfig(step, {
@@ -229,9 +229,6 @@ async function main() {
       cwd: path.resolve(__dirname, ".."),
       cache: true
     });
-
-    console.log(`[${nowIso()}] [System] START🚀: ${stepIndex} - ${obj}`);
-    console.log(`[${nowIso()}] [${obj}] Using config file: ${step.configFile}`);
 
     const rawData = loadDataFile(step.dataFile);
     const baseData = step.dataKey ? rawData[step.dataKey] : rawData;
