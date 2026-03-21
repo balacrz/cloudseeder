@@ -1,4 +1,4 @@
-# Product Hierarchy Use Case – 3‑Level Catalog with Optional Pricing
+# Use Case: Product Hierarchy — 3-Level Catalog with Pricing
 
 ## 1) Introduction
 This guide shows how to model a **3‑level product hierarchy** (Category → Subcategory → Item) using a **purely declarative** configuration: seeds, pipeline, and mappings. We also include optional **Price Book** and **Pricebook Entry** setup so that final-level Items are sellable in Salesforce.

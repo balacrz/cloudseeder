@@ -1,315 +1,243 @@
-# Sales Use Case – Account, Contact, and Opportunity
+# Use Case: Sales — Account, Contact, Opportunity
 
-## 1. Introduction
-This document describes how to configure **Sales (Account–Contact–Opportunity)** data loading using the Node.js Salesforce Data Loader. It demonstrates how seed data, pipelines, and mapping files work together to manage parent-child relationships, handle sparse data, enforce validations, and ensure idempotent loads.
+## Overview
 
----
+This use case loads a standard B2B sales dataset: companies (Account), their employees (Contact), and open deals (Opportunity). It demonstrates the complete mapping DSL — field shaping, transforms, reference resolution, validation, and upsert strategy — across three related objects.
 
-## 2. Business Context
-The Sales use case involves three primary objects:
-- **Account** – Represents companies or organizations.
-- **Contact** – Individuals tied to Accounts.
-- **Opportunity** – Sales deals linked to Accounts.
+**Objects loaded:** Account → Contact, Opportunity (both depend on Account)
 
-The configuration must:
-1. Load Accounts first (parents).
-2. Associate Contacts with Accounts.
-3. Create Opportunities tied to Accounts.
-4. Handle missing values, defaults, references, and validation.
+**Key patterns demonstrated:**
+- Parent-first loading order via `dependsOn`
+- Helper field cleanup with `transform.post`
+- Optional references (`Primary_Contact__c`) with `onMissing: "null"`
+- Sparse seeds with `coalesce` transform
+- Constants for shared default values
+- Bulk API for high-volume steps
 
 ---
 
-## 3. Seed Data (`sales.json`)
+## 1. Folder Structure
+
+```
+config/
+├── constants.json
+├── pipeline.json
+└── sales/
+    ├── data/
+    │   └── seed.json
+    └── mappings/
+        ├── Account.json
+        ├── Contact.json
+        └── Opportunity.json
+```
+
+---
+
+## 2. Constants (`config/constants.json`)
+
+Shared defaults referenced in Opportunity mapping.
+
+```json
+{
+  "oppty": {
+    "defaultStageName": "Prospecting",
+    "defaultCloseDate": "2025-09-30"
+  }
+}
+```
+
+---
+
+## 3. Seed Data (`config/sales/data/seed.json`)
+
+Each object key in the seed file maps to a pipeline `dataKey`.
+
 ```json
 {
   "Account": [
-    { "BKAI__External_Id__c": "acct-001", "Name": "Acme Corp" },
-    { "BKAI__External_Id__c": "acct-002", "Name": "GlobalTech" }
+    { "External_Id__c": "acct-001", "Name": "Acme Corp",           "Industry": "Technology" },
+    { "External_Id__c": "acct-002", "Name": "Global Dynamics Inc",  "Industry": "Manufacturing" },
+    { "External_Id__c": "acct-003", "Name": "Horizon Technologies", "Industry": "Technology" }
   ],
+
   "Contact": [
-    { "BKAI__External_Id__c": "cont-001", "FirstName": "Sam", "LastName": "Lee", "Email": "sam.lee@acme.com", "AccountExternalId": "acct-001" },
-    { "BKAI__External_Id__c": "cont-002", "FirstName": "Ava", "Email": "ava.chen@globaltech.com", "AccountExternalId": "acct-002" }
+    { "External_Id__c": "cont-001", "FirstName": "Sam",   "LastName": "Lee",    "Email": "sam.lee@acme.com",    "AccountExternalId": "acct-001" },
+    { "External_Id__c": "cont-002", "FirstName": "Maria",                       "Email": "maria@globaldyn.com", "AccountExternalId": "acct-002" },
+    { "External_Id__c": "cont-003", "FirstName": "David", "LastName": "Chen",   "Email": "david@horizontech.net","AccountExternalId": "acct-003" }
   ],
+
   "Opportunity": [
-    { "BKAI__External_Id__c": "opp-001", "Name": "Acme – Starter Deal", "StageName": "Prospecting", "Amount": 50000, "AccountExternalId": "acct-001" },
-    { "BKAI__External_Id__c": "opp-002", "Name": "GlobalTech – Expansion", "StageName": "Negotiation", "Amount": 150000, "AccountExternalId": "acct-002" }
+    { "External_Id__c": "opp-001", "Name": "Acme – Starter Deal",    "StageName": "Qualification", "CloseDate": "2025-10-15", "Amount": 15000,  "AccountExternalId": "acct-001", "PrimaryContactExternalId": "cont-001" },
+    { "External_Id__c": "opp-002", "Name": "Global – Expansion",     "StageName": "Proposal/Price Quote",                    "Amount": 75000,  "AccountExternalId": "acct-002" },
+    { "External_Id__c": "opp-003", "Name": "Horizon – New License",                                "CloseDate": "2025-12-01", "ExpectedRevenue": 45000, "AccountExternalId": "acct-003", "PrimaryContactExternalId": "cont-003" }
   ]
 }
 ```
 
-### Notes
-- All objects use **`BKAI__External_Id__c`** for idempotent upserts.
-- Some seeds may omit `LastName`; defaults and transforms handle this.
+**Seed design notes:**
+- `External_Id__c` is the stable match key for idempotent upserts.
+- `AccountExternalId` is a helper field — it links Contacts/Opportunities to their parent Account. It is removed before committing to Salesforce.
+- `PrimaryContactExternalId` is optional — some Opportunities omit it.
+- Opportunity `opp-002` omits `CloseDate` (falls back to constant). `opp-003` omits `StageName` (falls back to constant) and provides `ExpectedRevenue` instead of `Amount` (coalesced by transform).
 
 ---
 
-## 4. Pipeline (`pipeline.json`)
+## 4. Pipeline (`config/pipeline.json`)
+
 ```json
 {
+  "dryRun": false,
   "steps": [
     {
-      "object": "Account",
-      "dataFile": "./data/sales.json",
-      "dataKey": "Account",
-      "mode": "direct"
+      "object":     "Account",
+      "dataFile":   "./config/sales/data/seed.json",
+      "dataKey":    "Account",
+      "mode":       "direct",
+      "configFile": "./config/sales/mappings/Account.json",
+      "dependsOn":  []
     },
     {
-      "object": "Contact",
-      "dataFile": "./data/sales.json",
-      "dataKey": "Contact",
-      "mode": "direct",
-      "dependsOn": ["Account"]
+      "object":     "Contact",
+      "dataFile":   "./config/sales/data/seed.json",
+      "dataKey":    "Contact",
+      "mode":       "direct",
+      "configFile": "./config/sales/mappings/Contact.json",
+      "dependsOn":  ["Account"]
     },
     {
-      "object": "Opportunity",
-      "dataFile": "./data/sales.json",
-      "dataKey": "Opportunity",
-      "mode": "direct",
-      "dependsOn": ["Account"]
+      "object":     "Opportunity",
+      "dataFile":   "./config/sales/data/seed.json",
+      "dataKey":    "Opportunity",
+      "mode":       "direct",
+      "configFile": "./config/sales/mappings/Opportunity.json",
+      "dependsOn":  ["Account", "Contact"]
     }
   ]
 }
 ```
 
-### Notes
-- Accounts load first.
-- Contacts and Opportunities depend on Accounts.
+**Why `Opportunity` depends on both `Account` and `Contact`?**
+The optional `Primary_Contact__c` lookup resolves from `idMaps.Contact`. If Contact loaded after Opportunity, the reference would fail. Declaring both dependencies guarantees correct ordering.
 
 ---
 
 ## 5. Mapping Files
 
-### 5.1 Account.json
+### 5.1 Account (`config/sales/mappings/Account.json`)
+
+Account has no parent reference — it is the root object.
+
 ```json
 {
-  "identify": { "matchKey": "BKAI__External_Id__c" },
+  "identify": { "matchKey": "External_Id__c" },
+
   "shape": {
-    "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
-    },
+    "fieldMap": {},
     "defaults": {
-      "Name": "Unknown Account"
-    }
-  },
-  "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Name"],
-    "uniqueBy": ["BKAI__External_Id__c"]
-  },
-  "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
-    "api": "rest"
-  }
-}
-```
-
-### 5.2 Contact.json
-```json
-{
-  "identify": { "matchKey": "BKAI__External_Id__c" },
-
-  "shape": {
-    "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
+      "Type":     "Customer",
+      "Industry": "Other"
     },
-    "defaults": {
-      "LastName": "Unknown"
-    },
-    "removeFields": ["_debug"]
-  },
-
-  "transform": {
-    "pre": [
-      { "op": "coalesce", "out": "LastName", "from": ["LastName", "Name"], "default": "Unknown" }
-    ],
-    "post": [
-      { "op": "remove", "field": "AccountExternalId" }
-    ]
-  },
-
-  "references": [
-    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true }
-  ],
-
-  "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "LastName", "AccountId"],
-    "uniqueBy": ["BKAI__External_Id__c"]
-  },
-
-  "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
-    "api": "rest",
-    "batchSize": 200
-  }
-}
-```
-
-### 5.3 Opportunity.json
-```json
-{
-  "identify": { "matchKey": "BKAI__External_Id__c" },
-  "shape": {
-    "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
-    }
-  },
-  "references": [
-    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true }
-  ],
-  "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Name", "StageName", "AccountId"],
-    "uniqueBy": ["BKAI__External_Id__c"]
-  },
-  "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
-    "api": "rest"
-  }
-}
-```
-
----
-
-## 6. Execution Flow
-1. **Accounts** are upserted, populating `idMaps.Account`.
-2. **Contacts** are upserted, with transforms applying defaults and resolving `AccountId`.
-3. **Opportunities** are upserted, resolving `AccountId`.
-
----
-
-## 7. Validation Checklist
-- ✅ All seed rows contain `BKAI__External_Id__c`.
-- ✅ Defaults handle missing `LastName` values.
-- ✅ Transform rules remove seed-only fields post-processing.
-- ✅ References ensure parent Account exists before child is inserted.
-- ✅ Validation enforces required fields and uniqueness.
-
----
-
-This enhanced use case demonstrates a **richer mapping definition** with **shape, transforms, references, and validations** to ensure high data quality and consistency in Sales data loading.
-
-
-
----
-
-## 8. Advanced Mapping Pattern (Extended DSL, with `BKAI__External_Id__c`)
-The following extends the basic mappings to a richer **declarative DSL** that supports shaping, transforms, explicit reference resolution, validation, and strategy tuning. This avoids brittle "`${BKAI__External_Id__c}`" token usage by **mapping seed aliases** to Salesforce fields via `shape.fieldMap`.
-
-### 8.1 Contact.json (Advanced)
-```json
-{
-  "identify": { "matchKey": "BKAI__External_Id__c" },
-
-  "shape": {
-    "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
-    },
-    "defaults": {
-      "LastName": "Unknown"
-    },
-    "removeFields": ["_debug"]
-  },
-
-  "transform": {
-    "pre": [
-      { "op": "coalesce", "out": "LastName", "from": ["LastName", "Name"], "default": "Unknown" }
-    ],
-    "post": [
-      { "op": "remove", "field": "AccountExternalId" }
-    ]
-  },
-
-  "references": [
-    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true }
-  ],
-
-  "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "LastName", "AccountId"],
-    "uniqueBy": ["BKAI__External_Id__c"]
-  },
-
-  "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
-    "api": "rest",
-    "batchSize": 200
-  }
-}
-```
-**Explanation**
-- `identify.matchKey` – The loader keys `idMaps.Contact` by the *Salesforce* external-id field, ensuring idempotency.
-- `shape.fieldMap` – Maps the seed alias `ExternalKey` → the real field `BKAI__External_Id__c`. Seeds may keep a neutral `ExternalKey` column.
-- `shape.defaults` – Provides default values at shape time (before transforms) for sparse seeds.
-- `shape.removeFields` – Drops helper columns (e.g., `_debug`).
-- `transform.pre` – Runs before reference resolution. `coalesce` ensures `LastName` is present even if only `Name` was provided.
-- `transform.post` – Cleanup after references; removes `AccountExternalId` so it doesn’t reach Salesforce.
-- `references[]` – Explicit foreign key resolution using `idMaps`. The `${AccountExternalId}` token interpolates the **seed value**, not a field name.
-- `validate.requiredFields` – Asserts the final payload has mandatory fields.
-- `validate.uniqueBy` – Guards against duplicate seeds by external id.
-- `strategy` – Upsert for idempotency; REST API with `batchSize` tuning.
-
----
-
-### 8.2 Account.json (Advanced)
-```json
-{
-  "identify": { "matchKey": "BKAI__External_Id__c" },
-
-  "shape": {
-    "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
-    },
-    "defaults": {
-      "Industry": "Unknown",
-      "Type": "Customer"
-    }
+    "removeFields": []
   },
 
   "transform": {
     "pre": [
       { "op": "coalesce", "out": "Name", "from": ["Name", "CompanyName"], "default": "Unnamed Account" }
     ],
+    "post": []
+  },
+
+  "references": [],
+
+  "validate": {
+    "requiredFields": ["Name", "External_Id__c"],
+    "uniqueBy": ["External_Id__c"]
+  },
+
+  "strategy": {
+    "operation":       "upsert",
+    "externalIdField": "External_Id__c",
+    "api":             "bulk",
+    "batchSize":       200
+  }
+}
+```
+
+**Highlights:**
+- `coalesce` in `pre` transform: seeds may provide either `Name` or `CompanyName`; the first non-empty value wins.
+- `defaults` set `Type` and `Industry` when absent, so Salesforce required-field validation always passes.
+- Bulk API is used because this step can scale to thousands of accounts.
+
+---
+
+### 5.2 Contact (`config/sales/mappings/Contact.json`)
+
+Contact links to Account via `AccountId`. The helper field `AccountExternalId` is removed after reference resolution.
+
+```json
+{
+  "identify": { "matchKey": "External_Id__c" },
+
+  "shape": {
+    "fieldMap": {},
+    "defaults": {},
+    "removeFields": []
+  },
+
+  "transform": {
+    "pre": [
+      { "op": "coalesce", "out": "LastName", "from": ["LastName", "Name"], "default": "Unknown" }
+    ],
     "post": [
-      { "op": "remove", "field": "ParentAccountExternalId" }
+      { "op": "remove", "field": "AccountExternalId" }
     ]
   },
 
   "references": [
-    { "field": "ParentId", "from": "idMaps.Account && idMaps.Account['${ParentAccountExternalId}']", "required": false }
+    {
+      "field":     "AccountId",
+      "refObject": "Account",
+      "refKey":    "${AccountExternalId}",
+      "required":  true
+    }
   ],
 
   "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Name"],
-    "uniqueBy": ["BKAI__External_Id__c"]
+    "requiredFields": ["External_Id__c", "LastName", "AccountId"],
+    "uniqueBy": ["External_Id__c"]
   },
 
   "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
-    "api": "rest"
+    "operation":       "upsert",
+    "externalIdField": "External_Id__c",
+    "api":             "rest",
+    "batchSize":       200
   }
 }
 ```
-**Highlights**
-- Allows loading **both top-level and child Accounts** (via optional `ParentId`).
-- Uses the same `ExternalKey` alias → `BKAI__External_Id__c` mapping for seed simplicity.
+
+**Highlights:**
+- `coalesce` in `pre`: handles seeds that only have `Name` (full name) instead of `LastName`. Ensures Salesforce required field is always populated.
+- `transform.post` removes `AccountExternalId` after the reference resolver has used it.
+- `references[].refKey` uses `${AccountExternalId}` — the `${}` interpolates the current record's seed value, not a field name literal.
 
 ---
 
-### 8.3 Opportunity.json (Advanced)
+### 5.3 Opportunity (`config/sales/mappings/Opportunity.json`)
+
+Opportunity links to Account (required) and Contact (optional via custom field).
+
 ```json
 {
-  "identify": { "matchKey": "BKAI__External_Id__c" },
+  "identify": { "matchKey": "External_Id__c" },
 
   "shape": {
-    "fieldMap": {
-      "ExternalKey": "BKAI__External_Id__c"
-    },
+    "fieldMap": {},
     "defaults": {
-      "StageName": "Prospecting",
-      "IsPrivate": false
-    }
+      "StageName": "${constants.oppty.defaultStageName}",
+      "CloseDate":  "${constants.oppty.defaultCloseDate}"
+    },
+    "removeFields": []
   },
 
   "transform": {
@@ -323,65 +251,83 @@ The following extends the basic mappings to a richer **declarative DSL** that su
   },
 
   "references": [
-    { "field": "AccountId", "from": "idMaps.Account['${AccountExternalId}']", "required": true },
-    { "field": "Primary_Contact__c", "from": "idMaps.Contact && idMaps.Contact['${PrimaryContactExternalId}']", "required": false }
+    {
+      "field":     "AccountId",
+      "refObject": "Account",
+      "refKey":    "${AccountExternalId}",
+      "required":  true
+    },
+    {
+      "field":     "Primary_Contact__c",
+      "refObject": "Contact",
+      "refKey":    "${PrimaryContactExternalId}",
+      "required":  false,
+      "onMissing": "null"
+    }
   ],
 
   "validate": {
-    "requiredFields": ["BKAI__External_Id__c", "Name", "StageName", "AccountId"],
-    "uniqueBy": ["BKAI__External_Id__c"]
+    "requiredFields": ["External_Id__c", "Name", "StageName", "CloseDate", "AccountId"],
+    "uniqueBy": ["External_Id__c"]
   },
 
   "strategy": {
-    "operation": "upsert",
-    "externalIdField": "BKAI__External_Id__c",
-    "api": "rest"
+    "operation":       "upsert",
+    "externalIdField": "External_Id__c",
+    "api":             "bulk",
+    "batchSize":       200
   }
 }
 ```
-**Notes**
-- Demonstrates optional reference to a custom field `Primary_Contact__c` using a Contact external key.
-- `coalesce` allows seeds to provide either `Amount` or `ExpectedRevenue`.
+
+**Highlights:**
+- `defaults` use `${constants.*}` tokens so defaults can be changed centrally without editing the mapping.
+- `coalesce` for `Amount`: seeds that only provide `ExpectedRevenue` still produce a valid `Amount`.
+- Optional `Primary_Contact__c`: `onMissing: "null"` sets the field to null rather than throwing. Seeds that don't provide `PrimaryContactExternalId` still load successfully.
+- Both helper columns removed in `post` transform so they never reach Salesforce.
 
 ---
 
-## 9. Seed & Pipeline (Advanced BKAI version)
+## 6. Execution Flow
 
-### 9.1 Seed (`sales_bkai.json`)
-```json
-{
-  "Account": [
-    { "ExternalKey": "acct-001", "Name": "Acme Corp" },
-    { "ExternalKey": "acct-002", "Name": "GlobalTech", "ParentAccountExternalId": "acct-001" }
-  ],
-  "Contact": [
-    { "ExternalKey": "cont-001", "FirstName": "Sam", "LastName": "Lee", "Email": "sam.lee@acme.com", "AccountExternalId": "acct-001" },
-    { "ExternalKey": "cont-002", "Name": "Ava Chen", "Email": "ava.chen@globaltech.com", "AccountExternalId": "acct-002", "_debug": true }
-  ],
-  "Opportunity": [
-    { "ExternalKey": "opp-001", "Name": "Acme – Starter Deal", "StageName": "Prospecting", "Amount": 50000, "AccountExternalId": "acct-001", "PrimaryContactExternalId": "cont-001" },
-    { "ExternalKey": "opp-002", "Name": "GlobalTech – Expansion", "StageName": "Negotiation", "ExpectedRevenue": 150000, "AccountExternalId": "acct-002", "PrimaryContactExternalId": "cont-002" }
-  ]
-}
 ```
+Step 1: Account (bulk upsert)
+  → idMaps.Account["acct-001"] = "001xxxx"
+  → idMaps.Account["acct-002"] = "001yyyy"
+  → ...
 
-### 9.2 Pipeline (`pipeline_bkai.json`)
-```json
-{
-  "steps": [
-    { "object": "Account",     "dataFile": "./data/sales_bkai.json", "dataKey": "Account",     "mode": "direct" },
-    { "object": "Contact",     "dataFile": "./data/sales_bkai.json", "dataKey": "Contact",     "mode": "direct", "dependsOn": ["Account"] },
-    { "object": "Opportunity", "dataFile": "./data/sales_bkai.json", "dataKey": "Opportunity", "mode": "direct", "dependsOn": ["Account", "Contact"] }
-  ]
-}
+Step 2: Contact (rest upsert, depends on Account)
+  → AccountExternalId "acct-001" → idMaps.Account["acct-001"] → AccountId: "001xxxx"
+  → idMaps.Contact["cont-001"] = "003aaaa"
+  → ...
+
+Step 3: Opportunity (bulk upsert, depends on Account + Contact)
+  → AccountExternalId "acct-001" → AccountId: "001xxxx"
+  → PrimaryContactExternalId "cont-001" → Primary_Contact__c: "003aaaa"
+  → ...
 ```
-**Why `dependsOn` includes `Contact` for Opportunities?** If you use `Primary_Contact__c`, the Contact must exist before the Opportunity so that `idMaps.Contact[...]` resolves.
 
 ---
 
-## 10. Operational Tips
-- **Interpolation scope:** Only interpolate **seed values** (e.g., `${AccountExternalId}`) inside reference expressions. Do **not** interpolate *field names* like `${BKAI__External_Id__c}`.
-- **Where to remove helper columns:** Prefer `transform.post` for context-specific removals (e.g., `AccountExternalId`), and `shape.removeFields` for universal removals (e.g., `_debug`).
-- **Batch sizing:** Tune `strategy.batchSize` to balance API throughput vs. limits. Start with 200 for REST; consider Bulk API for very large datasets.
-- **Idempotency:** Always use stable `uniqueBy` keys and `upsert` with `externalIdField` to make reruns safe.
+## 7. Validation Checklist
 
+- Every seed row has a stable `External_Id__c`.
+- `AccountExternalId` links every Contact and Opportunity to its parent Account.
+- `LastName` is guaranteed by `coalesce` even for seeds without it.
+- `StageName` and `CloseDate` are guaranteed by `constants` defaults.
+- `Amount` is guaranteed by `coalesce` from `ExpectedRevenue`.
+- Helper fields (`AccountExternalId`, `PrimaryContactExternalId`) are removed before commit.
+- Salesforce required fields are listed in `validate.requiredFields`.
+
+---
+
+## 8. Operational Tips
+
+| Scenario | What to do |
+|---|---|
+| Re-run without duplicates | Use `upsert` with `externalIdField` — existing records are updated, not re-inserted |
+| Preview changes before writing | Set `DRY_RUN=true` — transforms, references, and validation all run; API calls are skipped |
+| Seed new fields without touching existing ones | Add to `shape.defaults` for sparse seeds, or use `transform.pre` assign to hard-code values |
+| Large dataset (10k+ records) | Use `"api": "bulk"` and tune `batchSize`; set `strategy.pollTimeoutMs` if jobs are slow |
+| Debug reference resolution failures | Set `DEBUG_REFS=true` — prints each lookup key, resolved value, and onMissing behavior |
+| Add environment-specific defaults | Create `config/env/<ENV_NAME>/Opportunity.json` with only the fields to override |

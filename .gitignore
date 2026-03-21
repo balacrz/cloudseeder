@@ -4,8 +4,9 @@
 .gitignore
 
 meta-data/*
-lib/utils-*.js
+lib/utils-original.js
 lib/metadata.js
+lib/salesforce/metadata.js
 
 package-lock.json
 .env
@@ -16,3 +17,13 @@ logs
 
 # Dependency directories
 node_modules/
+
+config/BKAI/
+
+lib/transform
+
+# Planning docs
+planning/
+requirements/
+
+scripts/build-transform.js
